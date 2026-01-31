@@ -64,8 +64,7 @@ class OutputGenerator:
         """
         try:
             import openpyxl
-            from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
-            from openpyxl.utils.dataframe import dataframe_to_rows
+            from openpyxl.styles import Font, PatternFill
         except ImportError:
             raise ImportError("openpyxl is required for Excel export. Install with: pip install openpyxl")
         
@@ -112,6 +111,8 @@ class OutputGenerator:
     
     def _write_summary_sheet(self, ws, header_font, header_fill):
         """Write summary information."""
+        from openpyxl.styles import Font
+        
         data = [
             ["Workbook Name", self.metadata.name],
             ["Version", self.metadata.version or "N/A"],
