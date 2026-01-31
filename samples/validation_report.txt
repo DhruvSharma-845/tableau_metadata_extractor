@@ -1,0 +1,73 @@
+============================================================
+TABLEAU METADATA VALIDATION REPORT
+============================================================
+
+Validation Score: 74/100
+Status: PASSED
+
+SUMMARY
+----------------------------------------
+Items Checked: 222
+Items Passed: 222
+Critical Issues: 0
+Errors: 0
+Warnings: 13
+
+ISSUES
+----------------------------------------
+
+[WARNING]
+  • datasource/federated.06isunw1k489iz17cvbbm1vjpw0t: Data source 'federated.06isunw1k489iz17cvbbm1vjpw0t' has no fields
+    → Suggestion: Verify the data connection is valid
+  • datasource/federated.06isunw1k489iz17cvbbm1vjpw0t: Data source 'federated.06isunw1k489iz17cvbbm1vjpw0t' has no fields
+    → Suggestion: Verify the data connection is valid
+  • datasource/federated.06isunw1k489iz17cvbbm1vjpw0t: Data source 'federated.06isunw1k489iz17cvbbm1vjpw0t' has no fields
+    → Suggestion: Verify the data connection is valid
+  • datasource/federated.06isunw1k489iz17cvbbm1vjpw0t: Data source 'federated.06isunw1k489iz17cvbbm1vjpw0t' has no fields
+    → Suggestion: Verify the data connection is valid
+  • datasource/federated.06isunw1k489iz17cvbbm1vjpw0t: Data source 'federated.06isunw1k489iz17cvbbm1vjpw0t' has no fields
+    → Suggestion: Verify the data connection is valid
+  • datasource/federated.06isunw1k489iz17cvbbm1vjpw0t: Data source 'federated.06isunw1k489iz17cvbbm1vjpw0t' has no fields
+    → Suggestion: Verify the data connection is valid
+  • datasource/federated.06isunw1k489iz17cvbbm1vjpw0t: Data source 'federated.06isunw1k489iz17cvbbm1vjpw0t' has no fields
+    → Suggestion: Verify the data connection is valid
+  • datasource/federated.06isunw1k489iz17cvbbm1vjpw0t: Data source 'federated.06isunw1k489iz17cvbbm1vjpw0t' has no fields
+    → Suggestion: Verify the data connection is valid
+  • datasource/federated.06isunw1k489iz17cvbbm1vjpw0t: Data source 'federated.06isunw1k489iz17cvbbm1vjpw0t' has no fields
+    → Suggestion: Verify the data connection is valid
+  • datasource/federated.06isunw1k489iz17cvbbm1vjpw0t: Data source 'federated.06isunw1k489iz17cvbbm1vjpw0t' has no fields
+    → Suggestion: Verify the data connection is valid
+  • datasource/federated.06isunw1k489iz17cvbbm1vjpw0t: Data source 'federated.06isunw1k489iz17cvbbm1vjpw0t' has no fields
+    → Suggestion: Verify the data connection is valid
+  • datasource/federated.06isunw1k489iz17cvbbm1vjpw0t: Data source 'federated.06isunw1k489iz17cvbbm1vjpw0t' has no fields
+    → Suggestion: Verify the data connection is valid
+  • datasource/federated.06isunw1k489iz17cvbbm1vjpw0t: Data source 'federated.06isunw1k489iz17cvbbm1vjpw0t' has no fields
+    → Suggestion: Verify the data connection is valid
+
+[INFO]
+  • visual/Categories: Chart type is set to Automatic
+    → Suggestion: Explicit chart type provides more predictable behavior
+  • visual/Custom Date Formatting: Chart type is set to Automatic
+    → Suggestion: Explicit chart type provides more predictable behavior
+  • visual/Custom Number Formatting: Chart type is set to Automatic
+    → Suggestion: Explicit chart type provides more predictable behavior
+  • visual/Dramatic Formatting: Chart type is set to Automatic
+    → Suggestion: Explicit chart type provides more predictable behavior
+  • visual/Formatting: Parts of the View: Chart type is set to Automatic
+    → Suggestion: Explicit chart type provides more predictable behavior
+  • visual/Hide (Break Lines): Chart type is set to Automatic
+    → Suggestion: Explicit chart type provides more predictable behavior
+  • visual/Hide (Connect Lines): Chart type is set to Automatic
+    → Suggestion: Explicit chart type provides more predictable behavior
+  • visual/Sales Trends: Chart type is set to Automatic
+    → Suggestion: Explicit chart type provides more predictable behavior
+  • visual/Show at Default Value: Chart type is set to Automatic
+    → Suggestion: Explicit chart type provides more predictable behavior
+  • visual/Show at Indicator: Chart type is set to Automatic
+    → Suggestion: Explicit chart type provides more predictable behavior
+  • visual/Some formatting: Chart type is set to Automatic
+    → Suggestion: Explicit chart type provides more predictable behavior
+  • visual/Tooltips: Chart type is set to Automatic
+    → Suggestion: Explicit chart type provides more predictable behavior
+
+============================================================
