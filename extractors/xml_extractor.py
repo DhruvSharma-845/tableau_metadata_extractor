@@ -33,6 +33,7 @@ from models.metadata_models import (
     DataSourceMetadata,
     ParameterMetadata,
     RelationshipMetadata,
+    MetricDetailRow,
     WorkbookMetadata,
 )
 
@@ -160,6 +161,9 @@ class XMLMetadataExtractor:
             # Build relationships
             relationships = self._build_relationships(datasources, sheets, dashboards, parameters)
             
+            # Build flattened metric rows (one row per metric-worksheet combination)
+            metric_rows = self._build_metric_rows(datasources, sheets, dashboards)
+            
             # Build workbook metadata
             metadata = WorkbookMetadata(
                 name=self.workbook_name,
@@ -173,6 +177,7 @@ class XMLMetadataExtractor:
                 dashboards=dashboards,
                 parameters=parameters,
                 relationships=relationships,
+                metric_rows=metric_rows,
             )
             
             # Compute statistics
@@ -1504,3 +1509,339 @@ class XMLMetadataExtractor:
                         ))
         
         return relationships
+    
+    def _build_metric_rows(
+        self,
+        datasources: List[DataSourceMetadata],
+        sheets: List[SheetMetadata],
+        dashboards: List[DashboardMetadata]
+    ) -> List[MetricDetailRow]:
+        """
+        Build flattened metric rows - one row per metric usage in each worksheet.
+        
+        This creates a denormalized view where each calculated field, measure, or dimension
+        that is used in a worksheet gets its own row with full context.
+        """
+        metric_rows = []
+        
+        # Build lookup for calculated fields by name
+        calc_field_lookup: Dict[str, Tuple[CalculatedFieldMetadata, DataSourceMetadata]] = {}
+        field_lookup: Dict[str, Tuple[FieldMetadata, DataSourceMetadata]] = {}
+        
+        for ds in datasources:
+            for calc in ds.calculated_fields:
+                calc_field_lookup[calc.name] = (calc, ds)
+                if calc.caption:
+                    calc_field_lookup[calc.caption] = (calc, ds)
+            
+            for field in ds.fields:
+                field_lookup[field.name] = (field, ds)
+                if field.caption:
+                    field_lookup[field.caption] = (field, ds)
+        
+        # Build worksheet to dashboard lookup
+        sheet_to_dashboards: Dict[str, List[str]] = {}
+        for dashboard in dashboards:
+            for ws_name in dashboard.worksheets:
+                if ws_name not in sheet_to_dashboards:
+                    sheet_to_dashboards[ws_name] = []
+                sheet_to_dashboards[ws_name].append(dashboard.name)
+        
+        # Process each worksheet
+        for sheet in sheets:
+            # Get filter details for this worksheet
+            filter_names = [f.field for f in sheet.filters]
+            filter_details = [
+                {
+                    "field": f.field,
+                    "type": f.filter_type.value,
+                    "explanation": f.calculation_explanation or "",
+                    "include_values": f.include_values[:5] if f.include_values else [],
+                    "exclude_values": f.exclude_values[:5] if f.exclude_values else [],
+                    "range_min": f.range_min,
+                    "range_max": f.range_max,
+                    "condition": f.condition_formula or f.formula or "",
+                }
+                for f in sheet.filters
+            ]
+            
+            # Get chart type
+            chart_type = sheet.visual.chart_type.value if sheet.visual else None
+            
+            # Get dashboards containing this sheet
+            dashboards_containing = sheet_to_dashboards.get(sheet.name, [])
+            
+            # Track which metrics we've already added for this sheet (to avoid duplicates)
+            added_metrics: Set[str] = set()
+            
+            # Process visual encodings to find all metrics with their shelf positions
+            if sheet.visual:
+                # Process rows
+                for row in sheet.visual.rows:
+                    field_name = row.get("field", "")
+                    if field_name and field_name not in added_metrics:
+                        metric_row = self._create_metric_row(
+                            field_name=field_name,
+                            shelf_position="rows",
+                            aggregation=row.get("aggregation"),
+                            sheet=sheet,
+                            chart_type=chart_type,
+                            filter_names=filter_names,
+                            filter_details=filter_details,
+                            dashboards_containing=dashboards_containing,
+                            calc_field_lookup=calc_field_lookup,
+                            field_lookup=field_lookup
+                        )
+                        if metric_row:
+                            metric_rows.append(metric_row)
+                            added_metrics.add(field_name)
+                
+                # Process columns
+                for col in sheet.visual.columns:
+                    field_name = col.get("field", "")
+                    if field_name and field_name not in added_metrics:
+                        metric_row = self._create_metric_row(
+                            field_name=field_name,
+                            shelf_position="columns",
+                            aggregation=col.get("aggregation"),
+                            sheet=sheet,
+                            chart_type=chart_type,
+                            filter_names=filter_names,
+                            filter_details=filter_details,
+                            dashboards_containing=dashboards_containing,
+                            calc_field_lookup=calc_field_lookup,
+                            field_lookup=field_lookup
+                        )
+                        if metric_row:
+                            metric_rows.append(metric_row)
+                            added_metrics.add(field_name)
+                
+                # Process color encoding
+                if sheet.visual.color:
+                    field_name = sheet.visual.color.get("field", "")
+                    if field_name and field_name not in added_metrics:
+                        metric_row = self._create_metric_row(
+                            field_name=field_name,
+                            shelf_position="color",
+                            aggregation=None,
+                            sheet=sheet,
+                            chart_type=chart_type,
+                            filter_names=filter_names,
+                            filter_details=filter_details,
+                            dashboards_containing=dashboards_containing,
+                            calc_field_lookup=calc_field_lookup,
+                            field_lookup=field_lookup
+                        )
+                        if metric_row:
+                            metric_rows.append(metric_row)
+                            added_metrics.add(field_name)
+                
+                # Process size encoding
+                if sheet.visual.size:
+                    field_name = sheet.visual.size.get("field", "")
+                    if field_name and field_name not in added_metrics:
+                        metric_row = self._create_metric_row(
+                            field_name=field_name,
+                            shelf_position="size",
+                            aggregation=None,
+                            sheet=sheet,
+                            chart_type=chart_type,
+                            filter_names=filter_names,
+                            filter_details=filter_details,
+                            dashboards_containing=dashboards_containing,
+                            calc_field_lookup=calc_field_lookup,
+                            field_lookup=field_lookup
+                        )
+                        if metric_row:
+                            metric_rows.append(metric_row)
+                            added_metrics.add(field_name)
+                
+                # Process labels
+                for label in sheet.visual.label:
+                    field_name = label.get("field", "")
+                    if field_name and field_name not in added_metrics:
+                        metric_row = self._create_metric_row(
+                            field_name=field_name,
+                            shelf_position="label",
+                            aggregation=None,
+                            sheet=sheet,
+                            chart_type=chart_type,
+                            filter_names=filter_names,
+                            filter_details=filter_details,
+                            dashboards_containing=dashboards_containing,
+                            calc_field_lookup=calc_field_lookup,
+                            field_lookup=field_lookup
+                        )
+                        if metric_row:
+                            metric_rows.append(metric_row)
+                            added_metrics.add(field_name)
+                
+                # Process details
+                for detail in sheet.visual.detail:
+                    field_name = detail.get("field", "")
+                    if field_name and field_name not in added_metrics:
+                        metric_row = self._create_metric_row(
+                            field_name=field_name,
+                            shelf_position="detail",
+                            aggregation=None,
+                            sheet=sheet,
+                            chart_type=chart_type,
+                            filter_names=filter_names,
+                            filter_details=filter_details,
+                            dashboards_containing=dashboards_containing,
+                            calc_field_lookup=calc_field_lookup,
+                            field_lookup=field_lookup
+                        )
+                        if metric_row:
+                            metric_rows.append(metric_row)
+                            added_metrics.add(field_name)
+                
+                # Process tooltip
+                for tooltip in sheet.visual.tooltip:
+                    field_name = tooltip.get("field", "")
+                    if field_name and field_name not in added_metrics:
+                        metric_row = self._create_metric_row(
+                            field_name=field_name,
+                            shelf_position="tooltip",
+                            aggregation=None,
+                            sheet=sheet,
+                            chart_type=chart_type,
+                            filter_names=filter_names,
+                            filter_details=filter_details,
+                            dashboards_containing=dashboards_containing,
+                            calc_field_lookup=calc_field_lookup,
+                            field_lookup=field_lookup
+                        )
+                        if metric_row:
+                            metric_rows.append(metric_row)
+                            added_metrics.add(field_name)
+            
+            # Also add any fields from all_fields_used that weren't in visual encodings
+            for field_name in sheet.all_fields_used:
+                if field_name and field_name not in added_metrics:
+                    metric_row = self._create_metric_row(
+                        field_name=field_name,
+                        shelf_position="unknown",
+                        aggregation=None,
+                        sheet=sheet,
+                        chart_type=chart_type,
+                        filter_names=filter_names,
+                        filter_details=filter_details,
+                        dashboards_containing=dashboards_containing,
+                        calc_field_lookup=calc_field_lookup,
+                        field_lookup=field_lookup
+                    )
+                    if metric_row:
+                        metric_rows.append(metric_row)
+                        added_metrics.add(field_name)
+        
+        return metric_rows
+    
+    def _create_metric_row(
+        self,
+        field_name: str,
+        shelf_position: str,
+        aggregation: Optional[str],
+        sheet: SheetMetadata,
+        chart_type: Optional[str],
+        filter_names: List[str],
+        filter_details: List[Dict[str, Any]],
+        dashboards_containing: List[str],
+        calc_field_lookup: Dict[str, Tuple[CalculatedFieldMetadata, DataSourceMetadata]],
+        field_lookup: Dict[str, Tuple[FieldMetadata, DataSourceMetadata]]
+    ) -> Optional[MetricDetailRow]:
+        """Create a single metric row for a field in a worksheet."""
+        
+        # Check if it's a calculated field
+        if field_name in calc_field_lookup:
+            calc, ds = calc_field_lookup[field_name]
+            return MetricDetailRow(
+                metric_name=calc.name,
+                metric_caption=calc.caption,
+                metric_type="calculated_field",
+                datasource_name=ds.name,
+                datasource_caption=ds.caption,
+                formula=calc.formula,
+                formula_readable=calc.formula_readable,
+                calculation_type=calc.calculation_type.value if calc.calculation_type else None,
+                data_type=calc.data_type.value if calc.data_type else None,
+                aggregation_used=aggregation,
+                aggregations_in_formula=calc.aggregations_used,
+                functions_used=calc.functions_used,
+                referenced_fields=calc.referenced_fields,
+                referenced_parameters=calc.referenced_parameters,
+                lod_type=calc.lod_type,
+                lod_dimensions=calc.lod_dimensions,
+                lod_expression=calc.lod_expression,
+                worksheet_name=sheet.name,
+                worksheet_title=sheet.title,
+                chart_type=chart_type,
+                shelf_position=shelf_position,
+                filters_applied=filter_names,
+                filter_details=filter_details,
+                dashboards_containing_worksheet=dashboards_containing,
+                complexity_score=calc.complexity_score,
+            )
+        
+        # Check if it's a regular field
+        elif field_name in field_lookup:
+            field, ds = field_lookup[field_name]
+            metric_type = "measure" if field.role == FieldRole.MEASURE else "dimension"
+            
+            return MetricDetailRow(
+                metric_name=field.name,
+                metric_caption=field.caption,
+                metric_type=metric_type,
+                datasource_name=ds.name,
+                datasource_caption=ds.caption,
+                formula=None,
+                formula_readable=None,
+                calculation_type=None,
+                data_type=field.data_type.value if field.data_type else None,
+                aggregation_used=aggregation or (field.default_aggregation.value if field.default_aggregation else None),
+                aggregations_in_formula=[],
+                functions_used=[],
+                referenced_fields=[],
+                referenced_parameters=[],
+                lod_type=None,
+                lod_dimensions=[],
+                lod_expression=None,
+                worksheet_name=sheet.name,
+                worksheet_title=sheet.title,
+                chart_type=chart_type,
+                shelf_position=shelf_position,
+                filters_applied=filter_names,
+                filter_details=filter_details,
+                dashboards_containing_worksheet=dashboards_containing,
+                complexity_score=0,
+            )
+        
+        # Unknown field - still create a row with basic info
+        else:
+            return MetricDetailRow(
+                metric_name=field_name,
+                metric_caption=None,
+                metric_type="unknown",
+                datasource_name=sheet.datasource_name,
+                datasource_caption=None,
+                formula=None,
+                formula_readable=None,
+                calculation_type=None,
+                data_type=None,
+                aggregation_used=aggregation,
+                aggregations_in_formula=[],
+                functions_used=[],
+                referenced_fields=[],
+                referenced_parameters=[],
+                lod_type=None,
+                lod_dimensions=[],
+                lod_expression=None,
+                worksheet_name=sheet.name,
+                worksheet_title=sheet.title,
+                chart_type=chart_type,
+                shelf_position=shelf_position,
+                filters_applied=filter_names,
+                filter_details=filter_details,
+                dashboards_containing_worksheet=dashboards_containing,
+                complexity_score=0,
+            )

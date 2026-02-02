@@ -10,8 +10,9 @@ A comprehensive tool to extract **100% accurate metadata** from Tableau workbook
 - **Filter Logic Parsing** - All filter types with **human-readable explanations**
 - **Dashboard Metadata** - Zones, pixel positions, actions, and interactivity
 - **Relationship Mapping** - Field→Sheet, Calc→Field, Sheet→Dashboard linkages
+- **Metric Detail Rows** - Flattened view of each metric per worksheet with full context (NEW!)
 - **Dual Extraction Methods** - Option A (XML) for local files, Option C (API) for server
-- **Multiple Output Formats** - JSON, Excel, HTML, Console
+- **Multiple Output Formats** - JSON, Excel (with Metrics sheet), HTML, Console
 
 ## Quick Start
 
@@ -20,13 +21,19 @@ A comprehensive tool to extract **100% accurate metadata** from Tableau workbook
 cd tableau_metadata_extractor
 pip install -r requirements.txt
 
-# Extract metadata to JSON
+# Extract metadata to JSON (default format)
 python main.py extract /path/to/workbook.twbx -o metadata.json
 
-# Extract to Excel (multiple sheets)
+# Extract to Excel (9 sheets: Summary, Fields, Calculated Fields, Worksheets, Filters, Dashboards, Parameters, Relationships, Metrics)
 python main.py extract /path/to/workbook.twbx -f excel -o metadata.xlsx
 
-# Validate metadata
+# Extract to interactive HTML report
+python main.py extract /path/to/workbook.twbx -f html -o report.html
+
+# Extract summary to text file
+python main.py extract /path/to/workbook.twbx -f summary -o summary.txt
+
+# Validate metadata completeness
 python main.py validate /path/to/workbook.twbx
 ```
 
@@ -209,6 +216,88 @@ python main.py validate /path/to/workbook.twbx -o validation_report.txt
 - Action linkages
 - Parameter usage
 
+### Metrics (Flattened View) - NEW!
+One row per metric-worksheet combination with full context:
+- Metric name, type, and calculation
+- Formula and referenced fields
+- Worksheet and shelf position (rows, columns, color, size, label, etc.)
+- All filters applied with explanations
+- Dashboard context
+- Complexity score
+
+## Output Formats
+
+### JSON (`-f json` - default)
+Complete metadata in JSON format, ideal for programmatic access and integration.
+
+```bash
+python main.py extract workbook.twbx -f json -o metadata.json
+```
+
+### Excel (`-f excel`)
+Multi-sheet Excel workbook with 9 sheets for easy analysis:
+
+| Sheet | Description |
+|-------|-------------|
+| **Summary** | Workbook info, version, extraction timestamp, statistics |
+| **Fields** | All fields with data types, roles, aggregations |
+| **Calculated Fields** | Formulas, calculation types, complexity scores |
+| **Worksheets** | Chart types, dimensions, measures, filter counts |
+| **Filters** | Filter types, values, conditions, explanations |
+| **Dashboards** | Size, zones, actions, exposed filters |
+| **Parameters** | Types, current values, allowable values |
+| **Relationships** | Field→Sheet, Calc→Field, Sheet→Dashboard mappings |
+| **Metrics** | **One row per metric-worksheet combination** (see below) |
+
+```bash
+python main.py extract workbook.twbx -f excel -o metadata.xlsx
+```
+
+#### Metrics Sheet Columns
+The Metrics sheet provides a denormalized view with one unique row per metric usage:
+
+| Column | Description |
+|--------|-------------|
+| Metric Name | Field or calculated field name |
+| Metric Caption | Display name |
+| Metric Type | `calculated_field`, `measure`, `dimension`, or `unknown` |
+| Data Source | Source data connection |
+| Worksheet | Sheet where metric is used |
+| Chart Type | Visualization type (bar, line, etc.) |
+| Shelf Position | `rows`, `columns`, `color`, `size`, `label`, `detail`, `tooltip` |
+| Formula | Full calculation formula |
+| Formula (Readable) | Cleaned formula without internal prefixes |
+| Calculation Type | `simple`, `aggregate`, `lod_fixed`, `table_calc`, etc. |
+| Data Type | `string`, `integer`, `real`, `date`, etc. |
+| Aggregation Used | How the metric is aggregated in this context |
+| Aggregations in Formula | SUM, AVG, COUNT, etc. used in formula |
+| Functions Used | All functions used (IF, CASE, etc.) |
+| Referenced Fields | Fields this calculation depends on |
+| Referenced Parameters | Parameters used in calculation |
+| LOD Type | `FIXED`, `INCLUDE`, `EXCLUDE` if LOD expression |
+| LOD Dimensions | Dimensions in LOD expression |
+| LOD Expression | The LOD calculation expression |
+| Filters Applied | List of filters on the worksheet |
+| Filter Details | Summary of filter logic |
+| Dashboards | Dashboards containing this worksheet |
+| Complexity Score | 0-100 score for calculation complexity |
+
+### HTML (`-f html`)
+Interactive HTML report with collapsible sections and styled tables.
+
+```bash
+python main.py extract workbook.twbx -f html -o report.html
+```
+
+### Summary (`-f summary`)
+Plain text summary for console output or quick review.
+
+```bash
+python main.py extract workbook.twbx -f summary -o summary.txt
+```
+
+---
+
 ## Architecture
 
 ```
@@ -264,6 +353,7 @@ metadata = extractor.extract()
 # Access data
 print(f"Sheets: {metadata.total_sheets}")
 print(f"Calculated Fields: {metadata.total_calculated_fields}")
+print(f"Metric Rows: {len(metadata.metric_rows)}")
 
 for sheet in metadata.sheets:
     print(f"Sheet: {sheet.name}")
@@ -272,11 +362,20 @@ for sheet in metadata.sheets:
     for f in sheet.filters:
         print(f"  Filter: {f.calculation_explanation}")
 
+# Access flattened metric rows (one row per metric-worksheet)
+for metric in metadata.metric_rows[:5]:  # First 5 metrics
+    print(f"Metric: {metric.metric_name}")
+    print(f"  Type: {metric.metric_type}")
+    print(f"  Worksheet: {metric.worksheet_name}")
+    print(f"  Shelf: {metric.shelf_position}")
+    print(f"  Formula: {metric.formula[:50] if metric.formula else 'N/A'}...")
+    print(f"  Filters: {', '.join(metric.filters_applied)}")
+
 # Export to various formats
 output = OutputGenerator(metadata)
-output.to_json("metadata.json")
-output.to_excel("metadata.xlsx")
-output.to_html("report.html")
+output.to_json("metadata.json")      # Full JSON with metric_rows
+output.to_excel("metadata.xlsx")     # Excel with Metrics sheet
+output.to_html("report.html")        # Interactive HTML report
 ```
 
 ### Option C: Tableau Server API
@@ -373,7 +472,23 @@ print(comparator.generate_report(result))
       "calculation_explanation": "Show records where [Region] equals 'West'"
     }]
   }],
-  "relationships": [...]
+  "relationships": [...],
+  "metric_rows": [{
+    "metric_name": "Profit Ratio",
+    "metric_type": "calculated_field",
+    "worksheet_name": "Revenue by Region",
+    "shelf_position": "columns",
+    "formula": "SUM([Profit]) / SUM([Sales])",
+    "calculation_type": "aggregate",
+    "filters_applied": ["Region"],
+    "filter_details": [{
+      "field": "Region",
+      "type": "categorical",
+      "explanation": "Show records where [Region] equals 'West'"
+    }],
+    "dashboards_containing_worksheet": ["Executive Dashboard"],
+    "complexity_score": 5
+  }]
 }
 ```
 

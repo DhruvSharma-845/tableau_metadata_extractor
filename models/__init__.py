@@ -17,6 +17,7 @@ from .metadata_models import (
     DataSourceMetadata,
     ParameterMetadata,
     RelationshipMetadata,
+    MetricDetailRow,
     WorkbookMetadata,
 )
 
@@ -37,5 +38,6 @@ __all__ = [
     "DataSourceMetadata",
     "ParameterMetadata",
     "RelationshipMetadata",
+    "MetricDetailRow",
     "WorkbookMetadata",
 ]

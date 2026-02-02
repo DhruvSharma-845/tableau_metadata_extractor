@@ -515,6 +515,65 @@ class RelationshipMetadata(BaseModel):
     description: Optional[str] = None
 
 
+class MetricDetailRow(BaseModel):
+    """
+    Flattened metric information - one row per metric usage in a worksheet.
+    
+    This provides a unique row for each metric (calculated field or measure) 
+    with its calculation logic, filters, and worksheet context.
+    """
+    # Metric identification
+    metric_name: str
+    metric_caption: Optional[str] = None
+    metric_type: str = Field(description="'calculated_field', 'measure', 'dimension'")
+    
+    # Data source context
+    datasource_name: Optional[str] = None
+    datasource_caption: Optional[str] = None
+    
+    # Calculation/Logic information
+    formula: Optional[str] = None
+    formula_readable: Optional[str] = None
+    calculation_type: Optional[str] = None  # simple, aggregate, lod_fixed, etc.
+    data_type: Optional[str] = None
+    
+    # Aggregation details
+    aggregation_used: Optional[str] = None  # How this metric is aggregated in the worksheet
+    aggregations_in_formula: List[str] = Field(default_factory=list)
+    functions_used: List[str] = Field(default_factory=list)
+    
+    # Dependencies
+    referenced_fields: List[str] = Field(default_factory=list)
+    referenced_parameters: List[str] = Field(default_factory=list)
+    
+    # LOD specific
+    lod_type: Optional[str] = None
+    lod_dimensions: List[str] = Field(default_factory=list)
+    lod_expression: Optional[str] = None
+    
+    # Worksheet context
+    worksheet_name: str
+    worksheet_title: Optional[str] = None
+    chart_type: Optional[str] = None
+    
+    # Encoding/Shelf position (where is this metric used in the viz)
+    shelf_position: Optional[str] = None  # rows, columns, color, size, label, detail, tooltip
+    
+    # Filters applied to this worksheet
+    filters_applied: List[str] = Field(default_factory=list)
+    filter_details: List[Dict[str, Any]] = Field(default_factory=list)
+    
+    # Dashboard context
+    dashboards_containing_worksheet: List[str] = Field(default_factory=list)
+    
+    # Complexity
+    complexity_score: int = 0
+    
+    @property
+    def display_name(self) -> str:
+        return self.metric_caption or self.metric_name
+
+
 class WorkbookMetadata(BaseModel):
     """Complete metadata for a Tableau workbook."""
     # Basic info
@@ -541,6 +600,9 @@ class WorkbookMetadata(BaseModel):
     
     # All relationships (aggregated view)
     relationships: List[RelationshipMetadata] = Field(default_factory=list)
+    
+    # Flattened metric rows (one row per metric-worksheet combination)
+    metric_rows: List[MetricDetailRow] = Field(default_factory=list)
     
     # Summary statistics
     total_sheets: int = 0

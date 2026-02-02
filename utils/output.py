@@ -107,6 +107,14 @@ class OutputGenerator:
         ws_rels = wb.create_sheet("Relationships")
         self._write_relationships_sheet(ws_rels, header_font, header_fill)
         
+        # Metrics sheet (one row per metric-worksheet combination)
+        ws_metrics = wb.create_sheet("Metrics")
+        self._write_metrics_sheet(ws_metrics, header_font, header_fill)
+        
+        # KPI Summary sheet (business-friendly overview of all KPIs/metrics with calculations)
+        ws_kpi_summary = wb.create_sheet("KPI Summary")
+        self._write_kpi_summary_sheet(ws_kpi_summary, header_font, header_fill)
+        
         wb.save(output_path)
     
     def _write_summary_sheet(self, ws, header_font, header_fill):
@@ -316,6 +324,312 @@ class OutputGenerator:
             row_idx += 1
         
         self._auto_width(ws, max_width=60)
+    
+    def _write_metrics_sheet(self, ws, header_font, header_fill):
+        """
+        Write flattened metrics information - one row per metric-worksheet combination.
+        
+        This sheet provides a denormalized view where each metric usage in a worksheet
+        is a unique row with all context (calculation, filters, dashboard, etc.).
+        """
+        headers = [
+            "Metric Name", "Metric Caption", "Metric Type", 
+            "Data Source", "Worksheet", "Chart Type", "Shelf Position",
+            "Formula", "Formula (Readable)", "Calculation Type",
+            "Data Type", "Aggregation Used", "Aggregations in Formula",
+            "Functions Used", "Referenced Fields", "Referenced Parameters",
+            "LOD Type", "LOD Dimensions", "LOD Expression",
+            "Filters Applied", "Filter Details (Summary)",
+            "Dashboards", "Complexity Score"
+        ]
+        
+        for col_idx, header in enumerate(headers, 1):
+            cell = ws.cell(row=1, column=col_idx, value=header)
+            cell.font = header_font
+            cell.fill = header_fill
+        
+        row_idx = 2
+        for metric in self.metadata.metric_rows:
+            ws.cell(row=row_idx, column=1, value=metric.metric_name)
+            ws.cell(row=row_idx, column=2, value=metric.metric_caption or "")
+            ws.cell(row=row_idx, column=3, value=metric.metric_type)
+            ws.cell(row=row_idx, column=4, value=metric.datasource_caption or metric.datasource_name or "")
+            ws.cell(row=row_idx, column=5, value=metric.worksheet_name)
+            ws.cell(row=row_idx, column=6, value=metric.chart_type or "")
+            ws.cell(row=row_idx, column=7, value=metric.shelf_position or "")
+            ws.cell(row=row_idx, column=8, value=(metric.formula[:500] if metric.formula else ""))
+            ws.cell(row=row_idx, column=9, value=(metric.formula_readable[:300] if metric.formula_readable else ""))
+            ws.cell(row=row_idx, column=10, value=metric.calculation_type or "")
+            ws.cell(row=row_idx, column=11, value=metric.data_type or "")
+            ws.cell(row=row_idx, column=12, value=metric.aggregation_used or "")
+            ws.cell(row=row_idx, column=13, value=", ".join(metric.aggregations_in_formula) if metric.aggregations_in_formula else "")
+            ws.cell(row=row_idx, column=14, value=", ".join(metric.functions_used) if metric.functions_used else "")
+            ws.cell(row=row_idx, column=15, value=", ".join(metric.referenced_fields[:5]) if metric.referenced_fields else "")
+            ws.cell(row=row_idx, column=16, value=", ".join(metric.referenced_parameters) if metric.referenced_parameters else "")
+            ws.cell(row=row_idx, column=17, value=metric.lod_type or "")
+            ws.cell(row=row_idx, column=18, value=", ".join(metric.lod_dimensions) if metric.lod_dimensions else "")
+            ws.cell(row=row_idx, column=19, value=metric.lod_expression or "")
+            ws.cell(row=row_idx, column=20, value=", ".join(metric.filters_applied) if metric.filters_applied else "")
+            
+            # Summarize filter details
+            filter_summary = ""
+            if metric.filter_details:
+                summaries = []
+                for f in metric.filter_details[:3]:  # Limit to first 3 filters
+                    summary = f"{f.get('field', '')}: {f.get('explanation', f.get('type', ''))}"
+                    summaries.append(summary)
+                filter_summary = "; ".join(summaries)
+                if len(metric.filter_details) > 3:
+                    filter_summary += f" (+{len(metric.filter_details) - 3} more)"
+            ws.cell(row=row_idx, column=21, value=filter_summary)
+            
+            ws.cell(row=row_idx, column=22, value=", ".join(metric.dashboards_containing_worksheet) if metric.dashboards_containing_worksheet else "")
+            ws.cell(row=row_idx, column=23, value=metric.complexity_score)
+            row_idx += 1
+        
+        self._auto_width(ws, max_width=50)
+    
+    def _write_kpi_summary_sheet(self, ws, header_font, header_fill):
+        """
+        Write a business-friendly KPI/Metric summary for leadership review.
+        
+        This sheet provides a clear overview of all KPIs and calculated metrics
+        with their exact calculation logic, usage across worksheets, and context.
+        """
+        from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
+        from openpyxl.utils import get_column_letter
+        
+        # Business-friendly headers
+        headers = [
+            "KPI / Metric Name",
+            "Display Name", 
+            "Metric Type",
+            "Calculation Logic (Formula)",
+            "Formula Description",
+            "Calculation Category",
+            "Data Type",
+            "Aggregations Used",
+            "Functions Used",
+            "Dependent Fields",
+            "Parameters Referenced",
+            "Used in Worksheets",
+            "Worksheet Count",
+            "Used in Dashboards",
+            "Filters Applied (Summary)",
+            "LOD Expression Type",
+            "Complexity Level",
+            "Complexity Score"
+        ]
+        
+        # Style definitions
+        title_font = Font(bold=True, size=14, color="FFFFFF")
+        title_fill = PatternFill(start_color="1F4E79", end_color="1F4E79", fill_type="solid")
+        thin_border = Border(
+            left=Side(style='thin'),
+            right=Side(style='thin'),
+            top=Side(style='thin'),
+            bottom=Side(style='thin')
+        )
+        
+        # Write headers
+        for col_idx, header in enumerate(headers, 1):
+            cell = ws.cell(row=1, column=col_idx, value=header)
+            cell.font = header_font
+            cell.fill = header_fill
+            cell.alignment = Alignment(wrap_text=True, vertical='center')
+        
+        # Freeze the header row
+        ws.freeze_panes = 'A2'
+        
+        # Build a comprehensive KPI summary from all sources
+        kpi_data = {}  # key: metric_name, value: aggregated info
+        
+        # First, collect all calculated fields from datasources
+        for ds in self.metadata.datasources:
+            for calc in ds.calculated_fields:
+                key = calc.name
+                if key not in kpi_data:
+                    kpi_data[key] = {
+                        "name": calc.name,
+                        "caption": calc.caption,
+                        "metric_type": "Calculated Field",
+                        "formula": calc.formula,
+                        "formula_readable": calc.formula_readable or calc.formula,
+                        "calculation_type": calc.calculation_type.value if calc.calculation_type else "simple",
+                        "data_type": calc.data_type.value if calc.data_type else "unknown",
+                        "aggregations": calc.aggregations_used,
+                        "functions": calc.functions_used,
+                        "referenced_fields": calc.referenced_fields,
+                        "referenced_parameters": calc.referenced_parameters,
+                        "worksheets": set(),
+                        "dashboards": set(),
+                        "filters": set(),
+                        "lod_type": calc.lod_type,
+                        "complexity_score": calc.complexity_score,
+                        "datasource": ds.caption or ds.name,
+                    }
+        
+        # Add measure fields
+        for ds in self.metadata.datasources:
+            for field in ds.fields:
+                if field.role.value == "measure":
+                    key = field.name
+                    if key not in kpi_data:
+                        kpi_data[key] = {
+                            "name": field.name,
+                            "caption": field.caption,
+                            "metric_type": "Measure",
+                            "formula": None,
+                            "formula_readable": f"[{field.name}]" + (f" (Default: {field.default_aggregation.value})" if field.default_aggregation else ""),
+                            "calculation_type": "base_measure",
+                            "data_type": field.data_type.value if field.data_type else "unknown",
+                            "aggregations": [field.default_aggregation.value] if field.default_aggregation and field.default_aggregation.value != "none" else [],
+                            "functions": [],
+                            "referenced_fields": [],
+                            "referenced_parameters": [],
+                            "worksheets": set(),
+                            "dashboards": set(),
+                            "filters": set(),
+                            "lod_type": None,
+                            "complexity_score": 0,
+                            "datasource": ds.caption or ds.name,
+                        }
+        
+        # Enrich with worksheet and dashboard usage from metric_rows
+        for metric in self.metadata.metric_rows:
+            key = metric.metric_name
+            if key in kpi_data:
+                kpi_data[key]["worksheets"].add(metric.worksheet_name)
+                for dash in metric.dashboards_containing_worksheet:
+                    kpi_data[key]["dashboards"].add(dash)
+                for f in metric.filters_applied:
+                    kpi_data[key]["filters"].add(f)
+        
+        # Also check sheets directly for usage
+        for sheet in self.metadata.sheets:
+            for field_name in sheet.all_fields_used:
+                if field_name in kpi_data:
+                    kpi_data[field_name]["worksheets"].add(sheet.name)
+            for field_name in sheet.measures_used:
+                if field_name in kpi_data:
+                    kpi_data[field_name]["worksheets"].add(sheet.name)
+        
+        # Map complexity score to business-friendly levels
+        def get_complexity_level(score):
+            if score >= 80:
+                return "Very Complex"
+            elif score >= 60:
+                return "Complex"
+            elif score >= 40:
+                return "Moderate"
+            elif score >= 20:
+                return "Simple"
+            else:
+                return "Basic"
+        
+        # Generate formula description
+        def get_formula_description(calc_type, lod_type, aggregations, functions):
+            parts = []
+            if calc_type == "lod_fixed":
+                parts.append("Level of Detail (FIXED) calculation")
+            elif calc_type == "lod_include":
+                parts.append("Level of Detail (INCLUDE) calculation")
+            elif calc_type == "lod_exclude":
+                parts.append("Level of Detail (EXCLUDE) calculation")
+            elif calc_type == "table_calc":
+                parts.append("Table calculation (computed in viz)")
+            elif calc_type == "aggregate":
+                parts.append("Aggregate calculation")
+            elif calc_type == "base_measure":
+                parts.append("Base measure field")
+            else:
+                parts.append("Row-level calculation")
+            
+            if aggregations:
+                parts.append(f"Uses: {', '.join(aggregations)}")
+            if "IF" in functions or "IIF" in functions:
+                parts.append("Contains conditional logic")
+            if "CASE" in functions:
+                parts.append("Contains CASE statement")
+            
+            return "; ".join(parts) if parts else "Standard calculation"
+        
+        # Sort KPIs: calculated fields first (by complexity), then measures
+        sorted_kpis = sorted(
+            kpi_data.values(),
+            key=lambda x: (
+                0 if x["metric_type"] == "Calculated Field" else 1,
+                -x["complexity_score"],
+                x["name"]
+            )
+        )
+        
+        # Write data rows
+        row_idx = 2
+        for kpi in sorted_kpis:
+            worksheets_list = sorted(kpi["worksheets"]) if kpi["worksheets"] else []
+            dashboards_list = sorted(kpi["dashboards"]) if kpi["dashboards"] else []
+            filters_list = sorted(kpi["filters"]) if kpi["filters"] else []
+            
+            formula_desc = get_formula_description(
+                kpi["calculation_type"],
+                kpi["lod_type"],
+                kpi["aggregations"],
+                kpi["functions"]
+            )
+            
+            ws.cell(row=row_idx, column=1, value=kpi["name"])
+            ws.cell(row=row_idx, column=2, value=kpi["caption"] or kpi["name"])
+            ws.cell(row=row_idx, column=3, value=kpi["metric_type"])
+            
+            # Formula - truncate for readability but include full formula
+            formula = kpi["formula_readable"] or kpi["formula"] or ""
+            ws.cell(row=row_idx, column=4, value=formula[:1000] if formula else "N/A")
+            
+            ws.cell(row=row_idx, column=5, value=formula_desc)
+            ws.cell(row=row_idx, column=6, value=kpi["calculation_type"].replace("_", " ").title())
+            ws.cell(row=row_idx, column=7, value=kpi["data_type"])
+            ws.cell(row=row_idx, column=8, value=", ".join(kpi["aggregations"]) if kpi["aggregations"] else "None")
+            ws.cell(row=row_idx, column=9, value=", ".join(kpi["functions"][:10]) if kpi["functions"] else "None")
+            ws.cell(row=row_idx, column=10, value=", ".join(kpi["referenced_fields"][:10]) if kpi["referenced_fields"] else "None")
+            ws.cell(row=row_idx, column=11, value=", ".join(kpi["referenced_parameters"]) if kpi["referenced_parameters"] else "None")
+            ws.cell(row=row_idx, column=12, value=", ".join(worksheets_list[:5]) + (f" (+{len(worksheets_list)-5} more)" if len(worksheets_list) > 5 else "") if worksheets_list else "Not used")
+            ws.cell(row=row_idx, column=13, value=len(worksheets_list))
+            ws.cell(row=row_idx, column=14, value=", ".join(dashboards_list) if dashboards_list else "None")
+            ws.cell(row=row_idx, column=15, value=", ".join(filters_list[:3]) + (f" (+{len(filters_list)-3} more)" if len(filters_list) > 3 else "") if filters_list else "None")
+            ws.cell(row=row_idx, column=16, value=kpi["lod_type"] or "N/A")
+            ws.cell(row=row_idx, column=17, value=get_complexity_level(kpi["complexity_score"]))
+            ws.cell(row=row_idx, column=18, value=kpi["complexity_score"])
+            
+            row_idx += 1
+        
+        # Set column widths for readability
+        column_widths = {
+            'A': 35,  # KPI Name
+            'B': 30,  # Display Name
+            'C': 18,  # Metric Type
+            'D': 80,  # Formula
+            'E': 50,  # Formula Description
+            'F': 18,  # Calculation Category
+            'G': 12,  # Data Type
+            'H': 25,  # Aggregations
+            'I': 35,  # Functions
+            'J': 40,  # Dependent Fields
+            'K': 25,  # Parameters
+            'L': 50,  # Worksheets
+            'M': 12,  # Worksheet Count
+            'N': 40,  # Dashboards
+            'O': 40,  # Filters
+            'P': 15,  # LOD Type
+            'Q': 15,  # Complexity Level
+            'R': 12,  # Complexity Score
+        }
+        
+        for col, width in column_widths.items():
+            ws.column_dimensions[col].width = width
+        
+        # Set row height for header
+        ws.row_dimensions[1].height = 30
     
     def _auto_width(self, ws, max_width: int = 40):
         """Auto-adjust column widths."""
